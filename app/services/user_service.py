@@ -1,6 +1,8 @@
 from enum import Enum
 
-from fastapi import Request, HTTPException
+from fastapi import Request
+
+from app.core.errors import ForbiddenError, UnauthorizedError
 
 
 class UserGroup(str, Enum):
@@ -36,17 +38,12 @@ def get_user_group_from_request(request: Request) -> UserGroup:
     user_id = request.headers.get("X-User-Id")
 
     if not user_id:
-        raise HTTPException(
-            status_code=401,
-            detail="缺少请求头 X-User-Id，无法识别用户身份",
-        )
+        raise UnauthorizedError("缺少请求头 X-User-Id，无法识别用户身份")
 
     user_group = USER_GROUP_MAP.get(user_id)
 
     if not user_group:
-        raise HTTPException(
-            status_code=403,
-            detail=f"用户 {user_id} 没有可用的 StreamGate 权限",
-        )
+        raise ForbiddenError(f"用户 {user_id} 没有可用的 StreamGate 权限")
+            
 
     return user_group

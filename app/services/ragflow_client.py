@@ -7,6 +7,7 @@ import httpx
 from app.core.config import settings
 from app.schemas.chat import ChatType
 from app.services.user_service import UserGroup
+from app.core.errors import RagflowError
 
 
 class RagflowClient:
@@ -98,23 +99,44 @@ class RagflowClient:
             json=payload,
         )
 
+        response_text = response.text
+
         if response.status_code != 200:
-            raise RuntimeError(
-                "RAGFlow 创建 session 失败："
-                f"HTTP {response.status_code}, "
-                f"{response.text[:500]}"
+            raise RagflowError(
+                message="RAGFlow 创建 session 失败",
+                data={
+                    "status_code": response.status_code,
+                    "body": response_text[:500],
+                    "url": url,
+                },
             )
 
-        obj = response.json()
+        try:
+            obj = response.json()
+        except Exception as exc:
+            raise RagflowError(
+                message="RAGFlow 创建 session 返回非 JSON",
+                data={
+                    "status_code": response.status_code,
+                    "body": response_text[:500],
+                    "url": url,
+                },
+            ) from exc
 
         if obj.get("code") != 0:
-            raise RuntimeError(f"RAGFlow 创建 session 失败：{obj}")
+            raise RagflowError(
+                message="RAGFlow 创建 session 返回业务失败",
+                data=obj,
+            )
 
         data = obj.get("data") or {}
         session_id = data.get("id")
 
         if not session_id:
-            raise RuntimeError(f"RAGFlow 创建 session 成功但未返回 session_id：{obj}")
+            raise RagflowError(
+                message="RAGFlow 创建 session 成功但未返回 session_id",
+                data=obj,
+            )
 
         return session_id
 
@@ -175,10 +197,12 @@ class RagflowClient:
         ) as response:
             if response.status_code != 200:
                 error_body = await response.aread()
-                raise RuntimeError(
-                    "RAGFlow 问答请求失败："
-                    f"HTTP {response.status_code}, "
-                    f"{error_body.decode('utf-8', errors='ignore')[:500]}"
+                raise RagflowError(
+                    message="RAGFlow 问答请求失败",
+                    data={
+                        "status_code": response.status_code,
+                        "body": error_body.decode("utf-8", errors="ignore")[:500],
+                    },
                 )
 
             async for line in response.aiter_lines():
@@ -233,4 +257,9 @@ class RagflowClient:
         try:
             return json.loads(line)
         except json.JSONDecodeError as exc:
-            raise RuntimeError(f"RAGFlow 返回了非 JSON 流式数据: {line[:300]}") from exc
+            raise RagflowError(
+                message="RAGFlow 返回了非 JSON 流式数据",
+                data={
+                    "line": line[:300],
+                },
+            ) from exc

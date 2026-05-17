@@ -3,6 +3,8 @@ from fastapi import FastAPI
 
 from app.api.chat import router as chat_router
 from app.core.config import settings
+from app.core.logger import app_logger
+from app.middleware.request_id import RequestIdMiddleware
 
 
 def create_app() -> FastAPI:
@@ -22,6 +24,7 @@ def create_app() -> FastAPI:
         description="StreamGate: RAGFlow streaming gateway",
         version="0.1.0",
     )
+    app.add_middleware(RequestIdMiddleware)
 
     # 注册聊天接口
     app.include_router(chat_router)
@@ -53,7 +56,7 @@ def create_app() -> FastAPI:
             limits=limits,
         )
 
-        print(f"{settings.APP_NAME} started")
+        app_logger.info(f"{settings.APP_NAME} started")
 
     @app.on_event("shutdown")
     async def shutdown() -> None:
@@ -63,7 +66,7 @@ def create_app() -> FastAPI:
 
         await app.state.http_client.aclose()
 
-        print(f"{settings.APP_NAME} stopped")
+        app_logger.info(f"{settings.APP_NAME} stopped")
 
     @app.get("/health")
     async def health():

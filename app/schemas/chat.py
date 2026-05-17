@@ -13,6 +13,22 @@ class ChatType(str, Enum):
     SUMMARY = "summary"
 
 
+class CreateSessionRequest(BaseModel):
+    """
+    前端请求 StreamGate 创建 RAGFlow 会话时传入的参数。
+    """
+
+    chat_type: ChatType = Field(
+        ...,
+        description="Chat 类型：kb=知识库问答，summary=文件总结",
+    )
+
+    session_name: Optional[str] = Field(
+        default=None,
+        description="会话名称；不传时后端自动生成",
+    )
+    
+
 class ChatStreamRequest(BaseModel):
     """
     前端请求 StreamGate 流式问答接口时传入的参数。
