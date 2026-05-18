@@ -22,16 +22,20 @@ StreamGate
 
 快速启动
 1. 安装依赖
-Bash
+```Bash
 pip install fastapi uvicorn httpx python-dotenv
+```
 2. 配置环境变量
 在项目根目录创建 .env 文件：
 
 代码段
+```
 RAGFLOW_BASE_URL=http://your-ragflow-server:8000
 PORT=8000
+```
 3. 启动服务
 生产环境建议开启多个 Worker 以利用多核性能：
 
-Bash
+```Bash
 uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
+```
