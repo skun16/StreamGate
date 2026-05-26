@@ -1,10 +1,47 @@
+from contextlib import asynccontextmanager
+from collections.abc import AsyncGenerator
+
 import httpx
 from fastapi import FastAPI
 
 from app.api.chat import router as chat_router
+from app.api.diagnostics import router as diagnostics_router
 from app.core.config import settings
 from app.core.logger import app_logger
 from app.middleware.request_id import RequestIdMiddleware
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """
+    管理应用启动和关闭时的共享资源。
+    """
+
+    timeout = httpx.Timeout(
+        connect=settings.RAGFLOW_CONNECT_TIMEOUT,
+        read=settings.RAGFLOW_READ_TIMEOUT,
+        write=settings.RAGFLOW_WRITE_TIMEOUT,
+        pool=settings.RAGFLOW_POOL_TIMEOUT,
+    )
+
+    limits = httpx.Limits(
+        max_connections=settings.HTTP_MAX_CONNECTIONS,
+        max_keepalive_connections=settings.HTTP_MAX_KEEPALIVE_CONNECTIONS,
+        keepalive_expiry=30.0,
+    )
+
+    app.state.http_client = httpx.AsyncClient(
+        timeout=timeout,
+        limits=limits,
+    )
+
+    app_logger.info(f"{settings.APP_NAME} started")
+
+    try:
+        yield
+    finally:
+        await app.state.http_client.aclose()
+        app_logger.info(f"{settings.APP_NAME} stopped")
 
 
 def create_app() -> FastAPI:
@@ -23,50 +60,13 @@ def create_app() -> FastAPI:
         title=settings.APP_NAME,
         description="StreamGate: RAGFlow streaming gateway",
         version="0.1.0",
+        lifespan=lifespan,
     )
     app.add_middleware(RequestIdMiddleware)
 
     # 注册聊天接口
     app.include_router(chat_router)
-
-    @app.on_event("startup")
-    async def startup() -> None:
-        """
-        应用启动时创建全局 HTTP 异步客户端。
-
-        不要每次请求都新建 AsyncClient。
-        连接池复用对高并发流式服务很重要。
-        """
-
-        timeout = httpx.Timeout(
-            connect=settings.RAGFLOW_CONNECT_TIMEOUT,
-            read=settings.RAGFLOW_READ_TIMEOUT,
-            write=settings.RAGFLOW_WRITE_TIMEOUT,
-            pool=settings.RAGFLOW_POOL_TIMEOUT,
-        )
-
-        limits = httpx.Limits(
-            max_connections=settings.HTTP_MAX_CONNECTIONS,
-            max_keepalive_connections=settings.HTTP_MAX_KEEPALIVE_CONNECTIONS,
-            keepalive_expiry=30.0,
-        )
-
-        app.state.http_client = httpx.AsyncClient(
-            timeout=timeout,
-            limits=limits,
-        )
-
-        app_logger.info(f"{settings.APP_NAME} started")
-
-    @app.on_event("shutdown")
-    async def shutdown() -> None:
-        """
-        应用关闭时释放 HTTP 客户端。
-        """
-
-        await app.state.http_client.aclose()
-
-        app_logger.info(f"{settings.APP_NAME} stopped")
+    app.include_router(diagnostics_router)
 
     @app.get("/health")
     async def health():
